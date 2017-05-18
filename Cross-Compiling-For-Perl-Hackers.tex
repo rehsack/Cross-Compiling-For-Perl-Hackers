@@ -1,0 +1,617 @@
+\documentclass[ngerman,xcolor={table,dvipsnames},smaller,compress,hyperref={bookmarks,colorlinks}]{beamer}%,handout
+
+\usepackage{url}
+\usepackage{listings}
+\usepackage[latin9]{inputenc}
+\usepackage{textcomp}
+%\usepackage{auto-pst-pdf}
+\usepackage{graphicx}
+\usepackage{pstricks}
+\usepackage{pst-node}
+\usepackage{pst-uml}
+\usepackage{pst-tree}
+\usepackage{pst-blur}
+
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{pifont}
+
+% for multipage tables (xtab or longtable
+\usepackage{longtable}
+\usepackage{lscape}
+\usepackage{booktabs}
+\usepackage[tableposition=top]{caption}
+
+\title{Cross Compiling For Perl Hackers}
+\author{Jens Rehsack}
+\institute[Niederrhein.PM]{Niederrhein Perl Mongers}
+\date{London Perl Workshop 2016}
+
+\usetheme[secheader]{Boadilla}
+\setbeamertemplate{navigation symbols}{}
+
+\newcommand{\perlfilename}[1]{{\color{cyan}{\textit{\begingroup \urlstyle{sf}\Url{#1}}}}}
+\newcommand{\xsfilename}[1]{{\color{olive}{\textit{\begingroup \urlstyle{sf}\Url{#1}}}}}
+\newcommand{\hfilename}[1]{{\color{olive}{\textit{\begingroup \urlstyle{sf}\Url{#1}}}}}
+\newcommand{\cfilename}[1]{{\color{magenta}{\textit{\begingroup \urlstyle{sf}\Url{#1}}}}}
+\newcommand{\variable}[1]{{\color{violet}{\textsf{#1}}}}
+\newcommand{\variablew}[1]{{{\textsf{#1}}}}
+\newcommand{\command}[1]{'\texttt{#1}'}
+
+\def\signed #1{{\leavevmode\unskip\nobreak\hfil\penalty50\hskip2em
+   \hbox{}\nobreak\hfil(#1)%
+   \parfillskip=0pt \finalhyphendemerits=0 \endgraf}}
+ 
+\newsavebox\mybox
+\newenvironment{aquote}[1]
+   {\savebox\mybox{#1}\begin{quotation}}
+   {\signed{\usebox\mybox}\end{quotation}}
+
+\makeatletter
+\makeatother
+
+\begin{document}
+
+\psset{angleA=90,angleB=-90}
+\lstset{language=Perl,
+        basicstyle=\ttfamily,
+        keywordstyle=\color{Maroon},
+        commentstyle=\color{Blue}, 
+        stringstyle=\color{Green},
+        showstringspaces=false}
+
+\AtBeginPart{\begin{frame}<beamer> \frametitle{Overview} \partpage \tableofcontents[current] \end{frame}}
+
+\frame{\maketitle}
+
+\part{Introduction}
+
+\section{Introduction}
+
+\subsection{Motivation}
+
+\begin{frame}[fragile]{Motivation}
+\begin{block}<1->{The Restaurant at the End of the Universe}
+\begin{aquote}{Douglas Adams}
+There is a theory which states that if ever anyone discovers exactly what the Universe is for and why it is here, it will instantly disappear and be replaced by something even more bizarre and inexplicable. \\
+\hfil \\
+There is another theory which states that this has already happened.\\
+\end{aquote}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Goals}
+\begin{block}<1->{Clarify some use-cases}
+\begin{itemize}
+\item Cross-Compiling
+\item Cross-Building
+\item Canadian Cross
+\item Foreign builds
+\end{itemize}
+\end{block}
+
+\begin{block}<2->{Sensibilize beyond developer environments}
+\begin{itemize}
+\item How can I enable other people using my code?
+\item What else beside specs, tests and documentation can be provided?
+\item Why should I care?
+\end{itemize}
+\end{block}
+\end{frame}
+
+\part{Basics}
+
+\section{Cross Compiler}
+
+\begin{frame}[fragile]{Cross Compiler}
+\begin{itemize}
+\item Compiles source into binary objects for another platform than the current host
+\item<2-> Platform? What is such a platform?
+\item<3-> A platform is defined by
+\begin{itemize}
+\item<3-> Architecture
+\item<3-> Vendor
+\item<3-> Operating System / ABI
+\begin{itemize}
+\item<4-> i486-pc-linux-gnu
+\item<4-> x86\_64-apple-darwin64
+\item<5-> arm926ejse-poky-linux-gnueabi
+\item<5-> cortexa9hf-vfp-neon-mx6qdl-poky-linux-gnueabi
+\item<6-> sparcv9-sun-solaris
+\end{itemize}
+\end{itemize}
+\end{itemize}
+\end{frame}
+
+\subsection{API vs. ABI}
+
+\begin{frame}[fragile]{API vs. ABI}
+\begin{block}<1->{size\_t-size.c}
+\scriptsize
+\begin{lstlisting}[language=C,inputencoding=latin9,escapeinside={(*@}{@*)}]
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(int argc, char *argv[]) {
+    printf("%zd\n", sizeof(size_t));
+    return 0;
+}
+\end{lstlisting}
+\end{block}
+
+\begin{block}<2->{32-bit mode size\_t-size}
+\scriptsize
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+$ cc -O -m32 -o size_t-size size_t-size.c
+$ ./size_t-size
+4
+\end{lstlisting}
+\end{block}
+
+\begin{block}<3->{64-bit mode size\_t-size}
+\scriptsize
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+$ cc -O -m64 -o size_t-size size_t-size.c
+$ ./size_t-size
+8
+\end{lstlisting}
+\end{block}
+
+\end{frame}
+
+\begin{frame}[fragile]{API}
+\begin{itemize}
+\item abbreviation for ''Application Programming Interface''
+\item<2-> defines compatibility on source level
+
+\begin{block}<3->{snprintf declaration}
+\scriptsize
+\begin{lstlisting}[language=C,inputencoding=latin9,escapeinside={(*@}{@*)}]
+#include <stdio.h>
+int snprintf(char *(*@\pnode(0,0){A}{}@*) restrict str,
+             (*@\pnode(0,0){B}{}@*)size_t size,
+             const char *(*@\pnode(0,0){C}{}@*) restrict format,
+             ...);
+\end{lstlisting}
+\end{block}
+
+\item<4-> every STD C conforming C program can call snprintf
+
+\begin{block}<3->{snprintf invocation}
+\scriptsize
+\begin{lstlisting}[language=C,inputencoding=latin9,escapeinside={(*@}{@*)}]
+#include <stdio.h>
+int main(int argc, char *argv[]) {
+    char buf[_PATH_MAX];
+    snprintf(buf, sizeof buf, "%s", argv[0]);
+    return 0;
+}
+\end{lstlisting}
+\end{block}
+\end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{ABI}
+\begin{itemize}
+\item abbreviation for ''Application Binary Interface''
+\item<2-> defines compatibility on compiled code level
+
+\begin{block}<3->{snprintf declaration}
+\scriptsize
+\begin{lstlisting}[language=C,inputencoding=latin9,escapeinside={(*@}{@*)}]
+#include <stdio.h>
+int snprintf(char *(*@\pnode(0,0){A}{}@*) restrict str,
+             (*@\pnode(0,0){B}{}@*)size_t size,
+             const char *(*@\pnode(0,0){C}{}@*) restrict format,
+             ...);
+\end{lstlisting}
+\end{block}
+
+\item<4-> sizes of \rnode{a}{pointers} depend on memory model (segmented, flat, address width, \ldots)
+\uncover<4->{\nccurve[linecolor=olive]{->}{a}{A}}
+\uncover<4->{\nccurve[linecolor=olive]{->}{a}{C}}
+
+\item<5-> size of \rnode{b}{buffer size} depends just on a subset of the memory model: the address width
+\uncover<5->{\nccurve[linecolor=teal]{->}{b}{B}}
+
+\end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{ABI influencers}
+\begin{itemize}
+\item CPU register sizes
+\item<2-> alignment
+\item<3-> packing of enums/structs
+\item<4-> memory model (flat vs. segmented, address width, \ldots)
+\item<5-> calling convention (stack vs. register based, order of arguments, how many registers, \ldots)
+\item<6-> byte order
+\end{itemize}
+\end{frame}
+
+\section{Cross Compiling}
+
+\begin{frame}[fragile]{Cross Compiling}
+\begin{block}<1->{The Hitchhiker's Guide to the Galaxy}
+\begin{aquote}{Douglas Adams}
+Don't Panic.\\
+\end{aquote}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Cross Compiling ''Hello world''}
+What does such a compiler do?
+
+\uncover<2->{Compiles source.}
+
+\begin{block}<3->{hello.c}
+\scriptsize
+\begin{lstlisting}[language=C,inputencoding=latin9,escapeinside={(*@}{@*)}]
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(int argc, char *argv[]) {
+    printf("Hello world\n");
+    return 0;
+}
+\end{lstlisting}
+\end{block}
+
+\end{frame}
+
+\begin{frame}[fragile]{Cross Compiling II}
+
+\begin{block}<1->{compiler invocation}
+\scriptsize
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+$ ${CC} -o hello hello.c
+\end{lstlisting}
+\end{block}
+
+\resizebox{\textwidth}{!}{
+\begin{pspicture}(15,5)%\psgrid
+\uncover<2->{\rput(1,4){\ovalnode{A}{hello.c}}}
+\uncover<3->{\rput(4,4){\ovalnode{B}{hello.i.c}}}
+\uncover<4->{\rput(7,4){\ovalnode{C}{hello.s}}}
+\uncover<5->{\rput(10,4){\ovalnode{D}{hello.o}}}
+\uncover<2->{\rput(13,4){\ovalnode{E}{hello}}}
+
+\uncover<3->{\rput(1,3){\ovalnode{A2}{stdlib.h}}}
+\uncover<3->{\rput(1,2){\ovalnode{A3}{stdio.h}}}
+
+\uncover<6->{\rput(10,3){\ovalnode{D2}{libc.so}}}
+\uncover<6->{\rput(10,2){\ovalnode{D3}{rt\_main.o}}}
+
+\uncover<3->{\ncline{->}{A}{B}\ncput*{cpp}}
+\uncover<3->{\ncline{->}{A2}{B}}
+\uncover<3->{\ncline{->}{A3}{B}}
+
+\uncover<4->{\ncline{->}{B}{C}\ncput*{cc1}}
+\uncover<5->{\ncline{->}{C}{D}\ncput*{as}}
+\uncover<6->{\ncline{->}{D}{E}\ncput*{ld}}
+\uncover<6->{\ncline{->}{D2}{E}}
+\uncover<6->{\ncline{->}{D3}{E}}
+
+\uncover<2->{\ncangle[angleA=90,angleB=90,]{->}{A}{E}\ncput*{cc}}
+\end{pspicture}
+}
+\end{frame}
+
+\section{Cross SDK}
+
+\begin{frame}[fragile]{Cross Development Kit}
+\begin{block}{What is this \ldots you're talking about?}
+\begin{description}
+\uncover<2->{\item[cpp]{C PreProcessor}}
+\uncover<3->{\item[cc1]{C Compiler}}
+\uncover<4->{\item[as]{Assembler}}
+\uncover<5->{\item[ld]{Linker Wrapper}}
+\uncover<6->{\item[collect2]{Linker}}
+\end{description}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Cross Development Kit II}
+\begin{block}{and what does it use, too?}
+\begin{description}
+\uncover<2->{\item[ar]{create and maintain library archives}}
+\uncover<3->{\item[nm]{display name list (symbol table)}}
+\uncover<4->{\item[objcopy]{copy and translate object files}}
+\uncover<5->{\item[objdump]{display information from object files}}
+\uncover<6->{\item[ranlib]{generate index to archive}}
+\uncover<7->{\item[strings]{find the printable strings in a object, or other binary, file}}
+\uncover<8->{\item[strip]{remove symbols}}
+\end{description}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Cross Development Kit Tools}
+\begin{block}
+\scriptsize
+\begin{lstlisting}[language=sh,inputencoding=latin9]
+# (cd .../arm-poky-linux-gnueabi/ && ls )
+arm-poky-linux-gnueabi-addr2line
+arm-poky-linux-gnueabi-ar
+arm-poky-linux-gnueabi-as
+arm-poky-linux-gnueabi-cpp
+arm-poky-linux-gnueabi-elfedit
+arm-poky-linux-gnueabi-gcc
+arm-poky-linux-gnueabi-gcc-ar
+arm-poky-linux-gnueabi-gcov
+arm-poky-linux-gnueabi-gprof
+arm-poky-linux-gnueabi-ld
+arm-poky-linux-gnueabi-ld.bfd
+arm-poky-linux-gnueabi-nm
+arm-poky-linux-gnueabi-objcopy
+arm-poky-linux-gnueabi-objdump
+arm-poky-linux-gnueabi-ranlib
+...
+\end{lstlisting}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Cross Development Kit Location}
+\begin{block}{Which \texttt{stdlib.h},\ldots is used}
+
+\scriptsize
+\begin{lstlisting}[language=sh,inputencoding=latin9]
+# locate stdlib.h
+...
+/foo-bsp/w/tmp/sysroots/arm926ejse-poky-linux-gnueabi/usr/include/stdlib.h
+/foo-bsp/w/tmp/sysroots/cortexa9hf-vfp-neon-poky-li.../usr/include/stdlib.h
+...
+/opt/SolarisStudio12.3-linux-x86-bin/solstudio12.3/prod/include/cc/stdlib.h
+...
+/usr/include/stdlib.h
+\end{lstlisting}
+
+\end{block}
+
+\uncover<2->{Similar picture for \uncover<3->{\texttt{stdio.h}, \uncover<4->{\texttt{stdint.h}, \uncover<5->{\texttt{libc.so}, \uncover<6->{\texttt{rt\_main.o}, \ldots}}}}}
+\end{frame}
+
+\begin{frame}[fragile]{Towel}
+\begin{block}{Knowing where one's towel is}
+Any man who can hitch the length and breadth of the galaxy, rough it, slum it, struggle against terrible odds, win through, and still know where his towel is, is clearly a man to be reckoned with.
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Convinced}
+
+\begin{block}{Where can I download it?}
+
+\uncover<2->{Which one?}
+
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Build Yourself a Cross-SDK}
+\begin{block}{Use the source, Luke}
+
+There're several ways:
+
+\begin{itemize}
+\uncover<2->{\item the hard way: do it yourself as described at \href{https://gcc.gnu.org/wiki/Building_Cross_Toolchains_with_gcc}{Building Cross Toolchains with gcc} or \href{https://www6.software.ibm.com/developerworks/education/l-cross/l-cross-ltr.pdf}{Build a GCC-based cross compiler for Linux}}
+\uncover<3->{\item Toolchain build helper like \href{http://crosstool-ng.org/}{crosstool-NG} or \href{http://www.scratchbox.org/}{Scratchbox}}
+\uncover<4->{\item Full flavoured - \href{http://yoctoproject.org/}{Yocto} or \href{http://t2-project.org/}{T2 SDE}}
+\end{itemize}
+
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Vendor Cross-SDK}
+\begin{block}{Typical cases}
+
+\begin{itemize}
+\item Bare Metal SDK
+\item Accelerator Libraries (typically not Open-Source)
+\item Early Adopter
+\item Enterprise Support
+\end{itemize}
+
+\end{block}
+\end{frame}
+
+\section{Pitfalls}
+
+\begin{frame}[fragile]{And now}
+\begin{block}{Which way I ought to go from here?}
+That depends \ldots on where you want to get to.
+\end{block}
+\begin{block}<2->{Topic was \ldots}
+Cross compiling for Perl Hackers
+
+\uncover<3->{we didn't define an audience, reasonable possibilities are}
+\begin{itemize}
+\uncover<4->{\item Perl Porters}
+\uncover<5->{\item Perl Module Maintainers}
+\end{itemize}
+
+\uncover<6->{Perl Porters probably have to care for more than Perl Module Maintainers \ldots}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Build here, run there}
+\begin{block}{Host vs. Target}
+\begin{itemize}
+\uncover<2->{\item Which \command{cc} to use to compile bootstrap tools (as miniperl)?\\
+\uncover<3->{mind \variable{HOSTCC} vs. \variable{CC}}}
+\uncover<4->{\item \ldots and which \hfilename{stdlib.h}/\hfilename{libc.so}?\\
+\uncover<5->{modern toolchains know \texttt{--sysroot} argument - prior lot's
+on replacements in \texttt{-I\ldots} and \texttt{-L\ldots} were required}}
+\uncover<6->{\item pick right \variable{CFLAGS}, \variable{BUILD\_CFLAGS}, \variable{HOST\_CFLAGS} or \variable{TARGET\_CFLAGS} for the right job, likewise for \variable{LDFLAGS}, \variable{CCLDFLAGS}, \variable{LDDLFLAGS}, \variable{CXXFLAGS} and whatever additional tool is used}
+\uncover<7->{\item do not mix build and target configuration}
+\uncover<8->{\item do not run target artifacts locally}
+\end{itemize}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Oops ...}
+\begin{block}{Host vs. Target II}
+\scriptsize
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+# Failed test 1 - positive infinity at op/infnan.t line 53
+#      got "0"
+# expected > "0"
+# 0 - 0 = 0
+# Failed test 2 - negative infinity at op/infnan.t line 54
+#      got "0"
+# expected < "0"
+\end{lstlisting}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Weird ...}
+\begin{block}<1->{Host vs. Target III}
+\scriptsize
+\begin{verbatim}
+Anibal Limon <anibal.limon@intel.com>
+> Also do you know why we are using config.sh file instead of leave perl
+> generate it on do\_configure?
+
+Perl's configure stage doesn't know neither cares for cross compiling.
+It would determine a lot of host related configuration instead of target
+related one.
+
+It might be reasonable to collect and analyze output (config.sh) of
+./Configure for a lot of different machines (eg. Cortex-A9 vs. XScale,
+vs. Kirkwood vs. ..., you see, I had to much ARM, to less PPC or MIPS
+...) to derive much better puzzled config.sh ...
+\end{verbatim}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Build here, run there II}
+\begin{block}{Build vs. Run}
+\begin{itemize}
+\item during build, several development kits are involved \uncover<2->{(at least host and target, sometimes host, build and multiple targets)}
+\item<3-> \variable{PATH}s vary, eg. \texttt{-L/foo-bsp/w/tmp/sysroots/arm926ejse-poky-linux-gnueabi/usr/lib} vs. \texttt{-Wl,-R/usr/lib}
+\end{itemize}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Build here, run there III}
+mind those differences when invoking wrapper-scripts
+\begin{block}{Build vs. Run}
+\scriptsize
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+rakudo-star % make install
+# This is a post-compile task, unfortunately placed into install stage
+./perl6-j tools/build/install-core-dist.pl /foo-bsp/w/tmp/work/...
+    cortexa9hf-vfp-neon-poky-linux-gnueabi/rakudo-star/2016.01-r0/...
+    image/usr/share/nqp
+Error: Could not find or load main class perl6
+\end{lstlisting}
+\end{block}
+
+\begin{block}<2->{perl6-j}
+\tiny
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+#!/bin/sh
+: ${NQP_DIR:="/usr/share/nqp"}
+: ${NQP_JARS:="${NQP_DIR}/runtime/asm-4.1.jar:${NQP_DIR}/runtime/asm-tree-4.1.jar:\
+               ${NQP_DIR}/runtime/jline-1.0.jar:${NQP_DIR}/runtime/jna.jar:\
+               ${NQP_DIR}/runtime/nqp-runtime.jar:${NQP_DIR}/lib/nqp.jar"}
+: ${PERL6_DIR:="/usr/share/perl6"}
+: ${PERL6_JARS:="${NQP_JARS}:${PERL6_DIR}/runtime/rakudo-runtime.jar:${PERL6_DIR}/runtime/perl6.jar"}
+exec java -noverify -Xms100m -Xbootclasspath/a:${NQP_JARS}:${PERL6_DIR}/runtime/rakudo-runtime.jar:\
+        ${PERL6_DIR}/runtime/perl6.jar -cp $CLASSPATH:${PERL6_DIR}/runtime:${PERL6_DIR}/lib:\
+        ${NQP_DIR}/lib -Dperl6.prefix=/usr -Djna.library.path=/usr/share/perl6/site/lib \
+        -Dperl6.execname="$0" perl6 "$@"
+\end{lstlisting}
+
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Build here, run there IV}
+\begin{block}{Build vs. Run}
+\begin{itemize}
+\item guess why running that script from \texttt{/foo-bsp/w/tmp/work/cortexa9hf-vfp-neon-poky-linux-gnueabi/\ldots} \texttt{rakudo-star/2016.01-r0/rakudo-star-2016.01/} fails \ldots
+\item<2-> remember \texttt{sdkroot} (build libraries, can be executed in build environment) and \texttt{sysroot} (target runtime chroot, used for linking etc.)
+\item<3-> all path's in \texttt{sysroot} are as if the files were already on \texttt{target}
+\end{itemize}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Experience}
+\begin{block}<1->{The Salmon of Doubt}
+\begin{aquote}{Douglas Adams}
+A learning experience is one of those things that says, ''You know that thing you just did? Don't do that.''\\
+\end{aquote}
+\end{block}
+\end{frame}
+
+
+\begin{frame}[fragile]{Configure Stage}
+\begin{block}{Prerequisites \ldots}
+\begin{itemize}
+\item nowadays Perl Toolchain doesn't support cross compile dependcy checks
+\uncover<2->{\item neither external resources (mind wrapper modules as \href{https://metacpan.org/release/RRDTool-OO}{RRDTool::OO}), so configure stage has to prove on it's own (compile and link test in \perlfilename{Makefile.PL})}
+\uncover<3->{\item \texttt{x\_prereqs} was an idea but never completed}
+\uncover<4->{\item workaround in Yocto for module prerequisites: \variable{DEPENDS} (configure stage) contain host packages, \variable{RDEPENDS} (install stage) contain target packages}
+    \begin{itemize}
+    \uncover<5->{
+	\item[\ding{43}] it's slightly more complicated for external libraries when \perlfilename{Makefile.PL} doesn't know about cross compiling}
+    \end{itemize}
+\end{itemize}
+\end{block}
+\end{frame}
+
+\part{Finish}
+
+\section{Conclusion}
+
+\begin{frame}[fragile]{Conclusion}
+\begin{block}{}
+\begin{itemize}
+\item stay as close as possible to existing standards - reinventing the wheel will almost always fail
+\item<2-> use \href{https://metacpan.org/release/ExtUtils-MakeMaker}{ExtUtils::MakeMaker} for building
+\item<3-> use \href{https://metacpan.org/release/Config-AutoConf}{Config::AutoConf} when it is really necessary to have configure time checks (as which API is supported by wrapped library)
+\item<3-> prefer \href{https://github.com/pkgconf/pkgconf}{pkgconf} (or \href{https://en.wikipedia.org/wiki/Pkg-config}{pkg-config}) over compile and link testing
+\item<4-> always allow every check being overwritten by environment variables
+\end{itemize}
+\end{block}
+\end{frame}
+
+\section{Resources}
+
+\begin{frame}[fragile]{Resources}
+\begin{block}{Cross Compile Perl}
+\begin{description}
+\item[\lbrack{}P5P\rbrack{} Remodeling the cross-compilation model] \url{http://grokbase.com/t/perl/perl5-porters/141gz52519/remodeling-the-cross-compilation-model}
+\end{description}
+\end{block}
+\begin{block}<2->{Cross Compile Guides}
+\begin{description}
+\item[Building Cross Toolchains with gcc] \url{https://gcc.gnu.org/wiki/Building_Cross_Toolchains_with_gcc}
+\item[Build a GCC-based cross compiler for Linux] \url{https://www6.software.ibm.com/developerworks/education/l-cross/l-cross-ltr.pdf}
+\end{description}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Resources}
+\begin{block}{Cross Compile Helper}
+\begin{description}
+\item[crosstool-NG] \url{http://crosstool-ng.org/}
+\item[Scratchbox] \url{http://www.scratchbox.org/}
+\end{description}
+\end{block}
+\begin{block}<2->{Cross Compile Distribution Builder}
+\begin{description}
+\item[Yocto] \url{http://yoctoproject.org/}
+\item[T2 SDE] \url{http://t2-project.org/}
+\end{description}
+\end{block}
+\end{frame}
+
+\section{Thank you}
+
+% THANKS
+\begin{frame}[fragile]{Thank You For Listening}
+\begin{block}<1->{Questions?}
+Jens Rehsack \textless{}\href{mailto:rehsack@cpan.org}{rehsack@cpan.org}\textgreater{} \\
+Cologne
+\end{block}
+\end{frame}
+
+\end{document}
