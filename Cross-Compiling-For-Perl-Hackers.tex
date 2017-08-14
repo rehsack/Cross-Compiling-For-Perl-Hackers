@@ -26,7 +26,7 @@
 \title{Cross Compiling For Perl Hackers}
 \author{Jens Rehsack}
 \institute[Niederrhein.PM]{Niederrhein Perl Mongers}
-\date{London Perl Workshop 2016}
+\date{The Perl Conference in Amsterdam 2017}
 
 \usetheme[secheader]{Boadilla}
 \setbeamertemplate{navigation symbols}{}
@@ -541,6 +541,7 @@ A learning experience is one of those things that says, ''You know that thing yo
 \end{block}
 \end{frame}
 
+\section{Configure Stage}
 
 \begin{frame}[fragile]{Configure Stage}
 \begin{block}{Prerequisites \ldots}
@@ -556,6 +557,225 @@ A learning experience is one of those things that says, ''You know that thing yo
 \end{itemize}
 \end{block}
 \end{frame}
+
+\begin{frame}[fragile]{Questions}
+\begin{block}{What can we prove?}
+\begin{itemize}
+\item Everything which can be figured out without
+\begin{enumerate}
+\uncover<2->{\item executing}
+\uncover<3->{\item accessing target}
+\end{enumerate}
+\uncover<4->{\item That's it}
+\end{itemize}
+\end{block}
+\end{frame}
+
+\subsection{Examples}
+
+\begin{frame}[fragile]{Proving Sizes}
+\begin{block}{Easy way}
+\scriptsize
+\begin{lstlisting}[language=perl,inputencoding=latin9,escapeinside={(*@}{@*)}]
+use (*@\pnode(0,0){A}{}@*)Config::AutoConf;
+Config::AutoConf->check_siz(*@\pnode(0,0){B}{}@*)eof_type( "ASN1_CTX"(*@\pnode(0,0){C}{}@*), {
+    prolo(*@\pnode(0,0){D}{}@*)gue => "#include <openssl/ssl.h>" } );
+\end{lstlisting}
+\end{block}
+
+\begin{itemize}
+\item<2-> load neat \rnode{a}{helper}
+\uncover<2->{\nccurve[linecolor=olive]{->}{a}{A}}
+
+\item<3-> ask for proving \rnode{b}{size} \uncover<3->{ of \rnode{c}{\texttt{ASN1\_CTX}}}
+\uncover<3->{\nccurve[linecolor=olive]{->}{b}{B}}
+\uncover<4->{\nccurve[linecolor=teal]{->}{c}{C}}
+
+\item<4-> load \rnode{d}{includes} defining the proved type
+\uncover<4->{\nccurve[linecolor=blue]{->}{d}{D}}
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}[fragile]{Behind the Scenes I}
+\begin{block}{Generated code}
+\scriptsize
+\begin{lstlisting}[language=C,inputencoding=latin9,escapeinside={(*@}{@*)}]
+/* end of conftest.h */
+#include <opens(*@\pnode(0,0){A}{}@*)sl/ssl.h>
+
+int
+main ()
+{
+static int test_(*@\pnode(0,0){B}{}@*)array [(((long int)(siz(*@\pnode(0,0){C1}{}@*)eof(ASN1_CTX))) <= %SI(*@\pnode(0,0){F}{}@*)ZE%) ? 1 : -(*@\pnode(0,0){C2}{}@*)1];
+test_array [0] (*@\pnode(0,0){D}{}@*)= 0 ;
+ret(*@\pnode(0,0){E}{}@*)urn 0;
+}
+\end{lstlisting} %stopzone
+\end{block}
+
+\begin{itemize}
+\item<2-> We asked to \rnode{a}{include ''\texttt{ssl.h}''} without approval (test scene)
+\uncover<2->{\nccurve[linecolor=blue]{->}{a}{A}}
+
+\item<3-> Sizes are tested using  \rnode{b}{arrays} \uncover<4->{with \rnode{c2}{negative} \rnode{c1}{size} on test failure}
+\uncover<3->{\nccurve[linecolor=olive]{->}{b}{B}}
+\uncover<4->{\nccurve[linecolor=blue]{->}{c1}{C1}}
+\uncover<4->{\nccurve[linecolor=red]{->}{c2}{C2}}
+
+\item<5-> need to \rnode{d}{assign} to array to avoid optimizing it away
+\uncover<5->{\nccurve[linecolor=olive]{->}{d}{D}}
+
+\item<6-> return to avoid compiler error as \rnode{e}{false negative}
+\uncover<6->{\nccurve[linecolor=blue]{->}{e}{E}}
+
+\uncover<7->{
+\item[\ding{43}] run that code though C compiler using a binary search algorithm for \rnode{f}{\texttt{\%SIZE\%}}
+\nccurve[linecolor=cyan]{->}{f}{F}
+}
+
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}[fragile]{Searching for size}
+\begin{block}{Sample run}
+\scriptsize
+\begin{lstlisting}[language=C,inputencoding=latin9,escapeinside={(*@}{@*)}]
+/* end of conftest.h */
+
+#include <openssl/ssl.h>
+
+  int
+  main ()
+  {
+    static int test_array [(((long int)(sizeof(ASN1_CTX))) <= 2) ? 1 : -1 ];
+  test_array [0] = 0
+;
+    return 0;
+  }
+\end{lstlisting} %stopzone
+\end{block}
+
+\begin{block}{Sample failure}
+\scriptsize
+\begin{lstlisting}[language=Sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+testf8cYAi.c:8:30: error: 'test_array' declared as an array
+with a negative size
+\end{lstlisting} %stopzone
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{A mini attempt on ''w''}
+\begin{block}{Requirements Analysis}
+\begin{itemize}
+\item get list of logged in users
+\item<2-> get list processes with command and uid
+\item<3-> get general information (uptime, load, \ldots)
+\end{itemize}
+\begin{itemize}
+\item[$\Rightarrow$]<4-> For example let's focus on logged in users
+\end{itemize}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Prepare probes for ''w''}
+\begin{block}{}
+\scriptsize
+\begin{lstlisting}[language=Perl,inputencoding=latin9,escapeinside={(*@}{@*)}]
+use Config::AutoConf;
+my $ac = Config::AutoConf->new((*@\pnode(0,0){A}{}@*));
+$ac->check_prog_cc(*@\pnode(0,0){B}{}@*); $ac->check_default_headers(*@\pnode(0,0){C}{}@*);
+if($ac->check_headers("utmp(*@\pnode(0,0){E}{}@*)x.h", "utmp(*@\pnode(0,0){F}{}@*).h")) {
+  my $(*@\pnode(0,0){G}{}@*)utx_incl = $ac->_default_includes . q[
+#ifdef HAVE_UTMP_H
+#include <utmp.h>
+#endif
+#ifdef HAVE_UTMPX_H
+#include <utmpx.h>
+#endif
+];
+  ...
+\end{lstlisting}
+\end{block} %stopzone
+
+\begin{itemize}
+\item<2-> get an own instance of \texttt{Config::\rnode{a}{AutoConf}}
+\uncover<2>{\nccurve[linecolor=blue]{->}{a}{A}}
+
+\item<3-> prove basics(\rnode{b}{compiler}, \rnode{c}{reasonable} headers)
+\uncover<3>{\nccurve[linecolor=teal]{->}{b}{B}\nccurve[linecolor=teal]{->}{c}{C}}
+
+\item<4-> prove from \rnode{e}{most} modern to \rnode{f}{least} modern whether utmp support is available
+\uncover<4>{\nccurve[linecolor=olive]{->}{e}{E}\nccurve[linecolor=olive]{->}{f}{F}}
+
+\item<5-> \rnode{g}{extend} default prologue for further testing
+\uncover<5>{\nccurve[linecolor=blue]{->}{g}{G}}
+
+\end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Probe listing logged in users ''w''}
+\begin{block}{}
+\scriptsize
+\begin{lstlisting}[language=Perl,inputencoding=latin9,escapeinside={(*@}{@*)}]
+  ...
+  if($ac->check_type("struct utmpx(*@\pnode(0,0){A}{}@*)", {prologue => $utx_incl})) {
+    $ac->check_members( ["struct utmpx.ut_type", "struct utmpx.ut_host"(*@\pnode(0,0){B}{}@*)], {
+      prologue => $utx_incl });
+    $ac->check_funcs(*@\pnode(0,0){C}{}@*)([qw[getutxent setutxent endutxent]], {prologue => ...});
+    $ac->check_decls(*@\pnode(0,0){D}{}@*)([qw[getutxent setutxent endutxent]], {prologue => ...});
+    ...
+  }
+  elsif($ac->check_type( "struct utmp(*@\pnode(0,0){E}{}@*)", {prologue => $utx_incl})) {
+    ..(*@\pnode(0,0){F}{}@*).
+    $ac->check_file(*@\pnode(0,0){G}{}@*)( "/var/tmp/utmp" )
+      and $ac->define_var( "UTMP_DB", "/var/tmp/utmp" );
+  }
+}
+$ac->write_config_h
+\end{lstlisting}
+\end{block} %stopzone
+
+\begin{itemize}
+\item<2-> check whether \texttt{struct \rnode{a}{utmpx}} is available (might be through \texttt{utmp.h})
+\uncover<2>{\nccurve[linecolor=blue]{->}{a}{A}}
+
+\item<3-> prove which data \rnode{b}{(\texttt{members})} are available through \texttt{struct utmpx}
+\uncover<3>{\nccurve[linecolor=blue]{->}{b}{B}}
+
+\item<4-> Check the \rnode{c}{availability} of functions (\texttt{getutxent}, \texttt{setutxent}, \texttt{endutxent}, \ldots)
+          \uncover<5->{and whether they have a \rnode{d}{declaration}}
+\uncover<4-5>{\nccurve[linecolor=teal]{->}{c}{C}}
+\uncover<5>{\nccurve[linecolor=teal]{->}{d}{D}}
+
+\item<6-> \rnode{f}{Same} procedure on \texttt{struct \rnode{e}{utmp}} when \texttt{struct utmpx} wasn't found
+\uncover<6>{\nccurve[linecolor=violet]{->}{e}{E}\nccurve[linecolor=cyan]{->}{f}{F}}
+
+\item<7-> When all else fails check well known \rnode{g}{db locations} \ldots
+\uncover<7>{\nccurve[linecolor=red]{->}{g}{G}}
+
+\end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Anatomy of proves}
+\begin{block}{Built the fundament}
+\begin{enumerate}
+\item check for required tools
+\item<2-> check headers
+\item<3-> check types
+\item<4-> check functions
+\item<5-> check declarations
+\end{enumerate}
+
+\uncover<6->{This order is valid for global (\texttt{stdint.h}) and local (\texttt{utmpx.h}) probes.}
+\end{block}
+\end{frame}
+
+%\begin{frame}[fragile]{Questions}
+%\begin{block}{}
+%\end{block}
+%\end{frame}
 
 \part{Finish}
 
